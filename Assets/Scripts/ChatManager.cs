@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using TMPro;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,44 +8,43 @@ using UnityEngine.UI;
 public class ChatManager : NetworkBehaviour
 {
     [SerializeField] private TMP_InputField chatInputField;
+    [SerializeField] private TextMeshProUGUI chatText;
     [SerializeField] private Button sendButton;
-    [SerializeField] private TextMeshProUGUI messagesText;
+
+    private NetworkVariable<FixedString128Bytes> latestMessage = new NetworkVariable<FixedString128Bytes>();
 
     private void Start()
     {
-        // Only allow sending messages if the player is the owner
-        if (IsOwner)
-        {
-            sendButton.onClick.AddListener(OnSendButtonClicked);
-        }
-        else
-        {
-            chatInputField.interactable = false;
-            sendButton.interactable = false;
-        }
+        sendButton.onClick.AddListener(OnSendButtonClicked);
+        Debug.Log("Clicked OnSendButton");
+        // Display the latest message when it changes
+        // latestMessage.OnValueChanged += OnMessageReceivedRpc;
     }
 
     private void OnSendButtonClicked()
     {
-        string message = chatInputField.text;
-        if (!string.IsNullOrEmpty(message))
-        {
-            SendChatMessageServerRpc(message);
-            chatInputField.text = string.Empty;
-        }
+        if (string.IsNullOrEmpty(chatInputField.text)) return;
+
+
+        // Send the message to the server
+        SendMessageServerRpc(chatInputField.text);
+        chatInputField.text = string.Empty;
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    private void SendChatMessageServerRpc(string message, ServerRpcParams rpcParams = default)
+    [Rpc(SendTo.Server)]
+    private void SendMessageServerRpc(string message)
     {
-        // Broadcast the message to all clients
-        ReceiveChatMessageClientRpc($"{OwnerClientId}: {message}");
+        // Update the latest message, which will sync across all clients!
+        latestMessage.Value = message;
+        Debug.Log("New Message Sent");
+        OnMessageReceivedRpc(message);
     }
 
-    [ClientRpc]
-    private void ReceiveChatMessageClientRpc(string message)
+    [Rpc(SendTo.Everyone)]
+    private void OnMessageReceivedRpc(FixedString128Bytes newMessage)
     {
-        // Display the message in the chat window
-        messagesText.text += message + "\n";
+        // Update the chat text with the new message :)
+        chatText.text += "\n" + newMessage;
+        Debug.Log("New Message Received");
     }
 }
